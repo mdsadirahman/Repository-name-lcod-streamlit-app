@@ -812,90 +812,135 @@ def run_application_model(app_name: str, app_cfg: Dict[str, Any], n_samples: int
 # ============================================================
 st.sidebar.header("Run Settings")
 
-N_SAMPLES = st.sidebar.slider(
-    "Monte Carlo samples",
-    min_value=1000,
-    max_value=50000,
-    value=DEFAULT_N_SAMPLES,
-    step=1000,
-)
-
-RANDOM_SEED = st.sidebar.number_input(
-    "Random seed",
-    value=DEFAULT_RANDOM_SEED,
-    step=1,
-)
+# ============================================================
+# STREAMLIT CONTROLS + FORM
+# ============================================================
 
 # One MDPI-style workflow only: CNG is included for all applications.
 APPLICATIONS = build_base_applications()
 APPLICATIONS = add_residual_tables(APPLICATIONS)
 
-st.sidebar.markdown("---")
-st.sidebar.header("Display Options")
+with st.sidebar.form("input_form"):
 
-selected_apps = st.sidebar.multiselect(
-    "Applications to display",
-    options=APP_ORDER,
-    default=APP_ORDER,
-    format_func=lambda x: APPLICATIONS[x]["label"],
-)
+    st.header("Run Settings")
 
-selected_vehicles_display = st.sidebar.multiselect(
-    "Vehicles to display",
-    options=VEHICLE_ORDER,
-    default=VEHICLE_ORDER,
-    format_func=lambda x: x.upper(),
-)
+    N_SAMPLES = st.slider(
+        "Monte Carlo samples",
+        min_value=1000,
+        max_value=50000,
+        value=DEFAULT_N_SAMPLES,
+        step=1000,
+    )
 
-if len(selected_apps) == 0 or len(selected_vehicles_display) == 0:
-    st.warning("Select at least one application and one vehicle.")
+    RANDOM_SEED = st.number_input(
+        "Random seed",
+        value=DEFAULT_RANDOM_SEED,
+        step=1,
+    )
+
+    st.markdown("---")
+    st.header("Display Options")
+
+    selected_apps = st.multiselect(
+        "Applications to display",
+        options=APP_ORDER,
+        default=APP_ORDER,
+        format_func=lambda x: APPLICATIONS[x]["label"],
+    )
+
+    selected_vehicles_display = st.multiselect(
+        "Vehicles to display",
+        options=VEHICLE_ORDER,
+        default=VEHICLE_ORDER,
+        format_func=lambda x: x.upper(),
+    )
+
+    # ========================================================
+    # INPUT EDITOR
+    # ========================================================
+
+    st.markdown("---")
+    st.header("Edit Input Ranges")
+
+    edit_app_key = st.selectbox(
+        "Application to edit",
+        options=APP_ORDER,
+        format_func=lambda x: APPLICATIONS[x]["label"],
+    )
+
+    edit_app = APPLICATIONS[edit_app_key]
+
+    with st.expander(f"{edit_app['label']} — Global Inputs", expanded=False):
+
+        for k, r in edit_app["GLOBAL_R"].items():
+
+            APPLICATIONS[edit_app_key]["GLOBAL_R"][k] = range_input(
+                k,
+                r,
+                f"{edit_app_key}_global_{k}"
+            )
+
+    for vt in VEHICLE_ORDER:
+
+        if not vehicle_is_complete(APPLICATIONS[edit_app_key], vt):
+            continue
+
+        with st.expander(f"{vt.upper()} Inputs", expanded=False):
+
+            st.markdown("### Vehicle Inputs")
+
+            for k, r in edit_app["VEH_R"][vt].items():
+
+                APPLICATIONS[edit_app_key]["VEH_R"][vt][k] = range_input(
+                    k,
+                    r,
+                    f"{edit_app_key}_{vt}_{k}"
+                )
+
+            st.markdown("### Residual Inputs")
+
+            for cname, fields in edit_app["RESIDUAL_R"][vt].items():
+
+                st.markdown(f"**{cname}**")
+
+                for k, r in fields.items():
+
+                    APPLICATIONS[edit_app_key]["RESIDUAL_R"][vt][cname][k] = range_input(
+                        k,
+                        r,
+                        f"{edit_app_key}_{vt}_{cname}_{k}"
+                    )
+
+    st.markdown("---")
+
+    run_button = st.form_submit_button(
+        "Run Model",
+        use_container_width=True
+    )
+
+# ============================================================
+# WAIT UNTIL BUTTON IS CLICKED
+# ============================================================
+
+if not run_button:
+
+    st.info(
+        "Adjust sidebar inputs and click 'Run Model' to calculate results."
+    )
+
     st.stop()
 
 # ============================================================
-# INPUT EDITOR: GROUPED BY APPLICATION AND VEHICLE TYPE
+# BASIC CHECKS
 # ============================================================
-st.sidebar.markdown("---")
-st.sidebar.header("Edit Input Ranges")
 
-edit_app_key = st.sidebar.selectbox(
-    "Application to edit",
-    options=APP_ORDER,
-    format_func=lambda x: APPLICATIONS[x]["label"],
-)
+if len(selected_apps) == 0 or len(selected_vehicles_display) == 0:
 
-edit_app = APPLICATIONS[edit_app_key]
+    st.warning(
+        "Select at least one application and one vehicle."
+    )
 
-with st.sidebar.expander(f"{edit_app['label']} — Global inputs", expanded=False):
-    for k, r in edit_app["GLOBAL_R"].items():
-        APPLICATIONS[edit_app_key]["GLOBAL_R"][k] = range_input(
-            k, r, f"{edit_app_key}_global_{k}"
-        )
-
-for vt in VEHICLE_ORDER:
-    if not vehicle_is_complete(APPLICATIONS[edit_app_key], vt):
-        continue
-
-    with st.sidebar.expander(f"{edit_app['label']} — {vt.upper()} inputs", expanded=False):
-        st.markdown("**Vehicle inputs**")
-        for k, r in edit_app["VEH_R"][vt].items():
-            APPLICATIONS[edit_app_key]["VEH_R"][vt][k] = range_input(
-                k, r, f"{edit_app_key}_{vt}_{k}"
-            )
-
-        st.markdown("**Residual inputs**")
-        for cname, fields in edit_app["RESIDUAL_R"][vt].items():
-            st.markdown(f"_{cname}_")
-            for k, r in fields.items():
-                APPLICATIONS[edit_app_key]["RESIDUAL_R"][vt][cname][k] = range_input(
-                    k, r, f"{edit_app_key}_{vt}_{cname}_{k}"
-                )
-
-# ============================================================
-# RUN MOTHER MODEL IN FIXED ORIGINAL ORDER
-# IMPORTANT:
-#   Always run all applications in APP_ORDER.
-#   Display filtering is applied only after simulation.
-# ============================================================
+    st.stop()
 all_results = {}
 
 try:
