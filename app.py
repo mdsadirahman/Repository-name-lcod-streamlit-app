@@ -252,21 +252,21 @@ def build_base_applications() -> Dict[str, Any]:
                     "purchase_cost_usd": (151000.0, 178000.0),
                     "fuel_economy_mi_per_unit": (2.0, 2.2),
                     "fuel_price_usd_per_unit": (3.0, 4.0),
-                    "planned_miles_per_year": (14000.0, 15000.0),
+                    "planned_miles_per_year": (41000.0, 41000.0),
                     "maintenance_usd_per_mile": (0.45, 0.943),
                 },
                 "fcev": {
                     "purchase_cost_usd": (348000.0, 385000.0),
                     "fuel_economy_mi_per_unit": (5.1, 6.9),
                     "fuel_price_usd_per_unit": (6.50, 7.00),
-                    "planned_miles_per_year": (14000.0, 15000.0),
+                    "planned_miles_per_year": (41000.0, 41000.0),
                     "maintenance_usd_per_mile": (0.55, 0.708),
                 },
                 "bev": {
                     "purchase_cost_usd": (233575.0, 388000.0),
                     "fuel_economy_mi_per_unit": (0.27, 0.30),
                     "fuel_price_usd_per_unit": (0.40, 0.60),
-                    "planned_miles_per_year": (14000.0, 15000.0),
+                    "planned_miles_per_year": (41000.0, 41000.0),
                     "maintenance_usd_per_mile": (0.55, 0.708),
                 },
                 # Trial CNG values copied from diesel for first-pass comparison.
@@ -275,7 +275,7 @@ def build_base_applications() -> Dict[str, Any]:
                     "purchase_cost_usd": (151000.0, 178000.0),
                     "fuel_economy_mi_per_unit": (2.0, 2.2),
                     "fuel_price_usd_per_unit": (3.0, 4.0),
-                    "planned_miles_per_year": (14000.0, 15000.0),
+                    "planned_miles_per_year": (41000.0, 41000.0),
                     "maintenance_usd_per_mile": (0.45, 0.943),
                 },
             },
@@ -820,6 +820,25 @@ APPLICATIONS = copy.deepcopy(
 )
 
 # ============================================================
+# SIDEBAR APP SELECTOR FOR EDITING
+# IMPORTANT:
+# This stays OUTSIDE the form so changing Refuse/Bus/Drayage/Long Haul
+# immediately changes which input boxes are shown. It does NOT run the model.
+# ============================================================
+st.sidebar.header("Edit Input Ranges")
+
+edit_app_key = st.sidebar.selectbox(
+    "Application to edit",
+    options=APP_ORDER,
+    index=APP_ORDER.index(st.session_state.get("edit_app_key", "refuse")),
+    format_func=lambda x: APPLICATIONS[x]["label"],
+    key="edit_app_selector",
+)
+
+st.session_state["edit_app_key"] = edit_app_key
+edit_app = APPLICATIONS[edit_app_key]
+
+# ============================================================
 # SIDEBAR FORM: MODEL INPUTS ONLY
 # These inputs do NOT rerun the model until "Run Model" is clicked.
 # ============================================================
@@ -842,15 +861,7 @@ with st.sidebar.form("model_input_form"):
     )
 
     st.markdown("---")
-    st.header("Edit Input Ranges")
-
-    edit_app_key = st.selectbox(
-        "Application to edit",
-        options=APP_ORDER,
-        format_func=lambda x: APPLICATIONS[x]["label"],
-    )
-
-    edit_app = APPLICATIONS[edit_app_key]
+    st.markdown(f"### Editing: {edit_app['label']}")
 
     with st.expander(f"{edit_app['label']} — Global Inputs", expanded=False):
         for k, r in edit_app["GLOBAL_R"].items():
