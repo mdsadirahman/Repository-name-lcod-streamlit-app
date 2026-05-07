@@ -922,12 +922,8 @@ with st.sidebar.form("input_form"):
 # WAIT UNTIL BUTTON IS CLICKED
 # ============================================================
 
-if not run_button:
-
-    st.info(
-        "Adjust sidebar inputs and click 'Run Model' to calculate results."
-    )
-
+if "all_results" not in st.session_state:
+    st.info("Adjust sidebar inputs and click 'Run Model' to calculate results.")
     st.stop()
 
 # ============================================================
@@ -941,19 +937,32 @@ if len(selected_apps) == 0 or len(selected_vehicles_display) == 0:
     )
 
     st.stop()
-all_results = {}
+if run_button:
+    all_results = {}
 
-try:
-    for app_key in APP_ORDER:
-        all_results[app_key] = run_application_model(
-            app_key,
-            APPLICATIONS[app_key],
-            n_samples=N_SAMPLES,
-            random_seed=RANDOM_SEED
-        )
-except Exception as e:
-    st.error(f"Model error: {e}")
-    st.stop()
+    try:
+        for app_key in APP_ORDER:
+            all_results[app_key] = run_application_model(
+                app_key,
+                APPLICATIONS[app_key],
+                n_samples=N_SAMPLES,
+                random_seed=RANDOM_SEED
+            )
+
+        st.session_state["all_results"] = all_results
+        st.session_state["APPLICATIONS"] = APPLICATIONS
+        st.session_state["selected_apps"] = selected_apps
+        st.session_state["selected_vehicles_display"] = selected_vehicles_display
+
+    except Exception as e:
+        st.error(f"Model error: {e}")
+        st.stop()
+
+else:
+    all_results = st.session_state["all_results"]
+    APPLICATIONS = st.session_state["APPLICATIONS"]
+    selected_apps = st.session_state["selected_apps"]
+    selected_vehicles_display = st.session_state["selected_vehicles_display"]
 
 st.success(
     "One-mode MDPI-style run is active. The model runs all applications in fixed original order, "
