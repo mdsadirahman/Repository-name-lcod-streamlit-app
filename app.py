@@ -810,17 +810,20 @@ def run_application_model(app_name: str, app_cfg: Dict[str, Any], n_samples: int
 # ============================================================
 # STREAMLIT CONTROLS
 # ============================================================
-st.sidebar.header("Run Settings")
+
+# Build default application inputs.
+# If the model has already been run, reload the last submitted inputs
+# so main-page widgets such as breakeven selectors do not reset the model.
+DEFAULT_APPLICATIONS = add_residual_tables(build_base_applications())
+APPLICATIONS = copy.deepcopy(
+    st.session_state.get("APPLICATIONS", DEFAULT_APPLICATIONS)
+)
 
 # ============================================================
-# STREAMLIT CONTROLS + FORM
+# SIDEBAR FORM: MODEL INPUTS ONLY
+# These inputs do NOT rerun the model until "Run Model" is clicked.
 # ============================================================
-
-# One MDPI-style workflow only: CNG is included for all applications.
-APPLICATIONS = build_base_applications()
-APPLICATIONS = add_residual_tables(APPLICATIONS)
-
-with st.sidebar.form("input_form"):
+with st.sidebar.form("model_input_form"):
 
     st.header("Run Settings")
 
@@ -828,36 +831,15 @@ with st.sidebar.form("input_form"):
         "Monte Carlo samples",
         min_value=1000,
         max_value=50000,
-        value=DEFAULT_N_SAMPLES,
+        value=int(st.session_state.get("N_SAMPLES", DEFAULT_N_SAMPLES)),
         step=1000,
     )
 
     RANDOM_SEED = st.number_input(
         "Random seed",
-        value=DEFAULT_RANDOM_SEED,
+        value=int(st.session_state.get("RANDOM_SEED", DEFAULT_RANDOM_SEED)),
         step=1,
     )
-
-    st.markdown("---")
-    st.header("Display Options")
-
-    selected_apps = st.multiselect(
-        "Applications to display",
-        options=APP_ORDER,
-        default=APP_ORDER,
-        format_func=lambda x: APPLICATIONS[x]["label"],
-    )
-
-    selected_vehicles_display = st.multiselect(
-        "Vehicles to display",
-        options=VEHICLE_ORDER,
-        default=VEHICLE_ORDER,
-        format_func=lambda x: x.upper(),
-    )
-
-    # ========================================================
-    # INPUT EDITOR
-    # ========================================================
 
     st.markdown("---")
     st.header("Edit Input Ranges")
@@ -871,9 +853,7 @@ with st.sidebar.form("input_form"):
     edit_app = APPLICATIONS[edit_app_key]
 
     with st.expander(f"{edit_app['label']} — Global Inputs", expanded=False):
-
         for k, r in edit_app["GLOBAL_R"].items():
-
             APPLICATIONS[edit_app_key]["GLOBAL_R"][k] = range_input(
                 k,
                 r,
@@ -881,30 +861,23 @@ with st.sidebar.form("input_form"):
             )
 
     for vt in VEHICLE_ORDER:
-
         if not vehicle_is_complete(APPLICATIONS[edit_app_key], vt):
             continue
 
-        with st.expander(f"{vt.upper()} Inputs", expanded=False):
+        with st.expander(f"{edit_app['label']} — {vt.upper()} Inputs", expanded=False):
 
-            st.markdown("### Vehicle Inputs")
-
+            st.markdown("**Vehicle inputs**")
             for k, r in edit_app["VEH_R"][vt].items():
-
                 APPLICATIONS[edit_app_key]["VEH_R"][vt][k] = range_input(
                     k,
                     r,
                     f"{edit_app_key}_{vt}_{k}"
                 )
 
-            st.markdown("### Residual Inputs")
-
+            st.markdown("**Residual inputs**")
             for cname, fields in edit_app["RESIDUAL_R"][vt].items():
-
-                st.markdown(f"**{cname}**")
-
+                st.markdown(f"_{cname}_")
                 for k, r in fields.items():
-
                     APPLICATIONS[edit_app_key]["RESIDUAL_R"][vt][cname][k] = range_input(
                         k,
                         r,
@@ -919,25 +892,35 @@ with st.sidebar.form("input_form"):
     )
 
 # ============================================================
-# WAIT UNTIL BUTTON IS CLICKED
+# SIDEBAR DISPLAY OPTIONS
+# These only filter the already-run results. They do NOT rerun the model.
 # ============================================================
+st.sidebar.markdown("---")
+st.sidebar.header("Display Options")
 
-if "all_results" not in st.session_state:
-    st.info("Adjust sidebar inputs and click 'Run Model' to calculate results.")
-    st.stop()
+selected_apps = st.sidebar.multiselect(
+    "Applications to display",
+    options=APP_ORDER,
+    default=st.session_state.get("selected_apps", APP_ORDER),
+    format_func=lambda x: APPLICATIONS[x]["label"],
+)
+
+selected_vehicles_display = st.sidebar.multiselect(
+    "Vehicles to display",
+    options=VEHICLE_ORDER,
+    default=st.session_state.get("selected_vehicles_display", VEHICLE_ORDER),
+    format_func=lambda x: x.upper(),
+)
 
 # ============================================================
-# BASIC CHECKS
+# RUN OR LOAD MODEL RESULTS
 # ============================================================
-
-if len(selected_apps) == 0 or len(selected_vehicles_display) == 0:
-
-    st.warning(
-        "Select at least one application and one vehicle."
-    )
-
-    st.stop()
 if run_button:
+
+    if len(selected_apps) == 0 or len(selected_vehicles_display) == 0:
+        st.warning("Select at least one application and one vehicle.")
+        st.stop()
+
     all_results = {}
 
     try:
@@ -949,8 +932,11 @@ if run_button:
                 random_seed=RANDOM_SEED
             )
 
+        # Store results and the exact submitted inputs.
         st.session_state["all_results"] = all_results
-        st.session_state["APPLICATIONS"] = APPLICATIONS
+        st.session_state["APPLICATIONS"] = copy.deepcopy(APPLICATIONS)
+        st.session_state["N_SAMPLES"] = int(N_SAMPLES)
+        st.session_state["RANDOM_SEED"] = int(RANDOM_SEED)
         st.session_state["selected_apps"] = selected_apps
         st.session_state["selected_vehicles_display"] = selected_vehicles_display
 
@@ -959,14 +945,27 @@ if run_button:
         st.stop()
 
 else:
+
+    if "all_results" not in st.session_state:
+        st.info("Adjust sidebar inputs and click **Run Model** to calculate results.")
+        st.stop()
+
+    # Use the last completed run. This allows main-page widgets
+    # such as breakeven selectors to change without forcing a new model run.
     all_results = st.session_state["all_results"]
     APPLICATIONS = st.session_state["APPLICATIONS"]
-    selected_apps = st.session_state["selected_apps"]
-    selected_vehicles_display = st.session_state["selected_vehicles_display"]
+
+    # Keep current display filters live without rerunning the model.
+    st.session_state["selected_apps"] = selected_apps
+    st.session_state["selected_vehicles_display"] = selected_vehicles_display
+
+if len(selected_apps) == 0 or len(selected_vehicles_display) == 0:
+    st.warning("Select at least one application and one vehicle.")
+    st.stop()
 
 st.success(
-    "One-mode MDPI-style run is active. The model runs all applications in fixed original order, "
-    "CNG is included for all applications, and breakeven uses diesel LCOD from the same run."
+    "Model results are loaded. Sidebar input changes require clicking **Run Model**. "
+    "Breakeven selectors and display filters can be changed without rerunning the Monte Carlo simulation."
 )
 
 # ============================================================
@@ -1290,6 +1289,6 @@ else:
 # FINAL NOTE
 # ============================================================
 st.info(
-    "Changing the Monte Carlo sample number, random seed, or sidebar input ranges automatically reruns the model. "
+    "Sidebar model inputs do not recalculate automatically. Change inputs first, then click **Run Model**. "
     "Drayage and Long Haul CNG currently use diesel-like trial parameters so you can test the workflow before replacing them with final CNG data."
 )
